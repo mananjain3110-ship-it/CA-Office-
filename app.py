@@ -1,143 +1,82 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 
-st.set_page_config(page_title="CA Work Diary Live", layout="centered")
+st.set_page_config(page_title="Work Diary Test", layout="centered")
 
-st.title("📱 CA Office Work Diary (LIVE)")
+st.title("🧪 Work Diary (Testing Mode)")
 
 # -----------------------------
-# GOOGLE SHEETS CONNECTION
+# Session Storage (Temporary)
 # -----------------------------
-scope = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive"
-]
+if "data" not in st.session_state:
+    st.session_state.data = pd.DataFrame(columns=[
+        "Date", "Name", "Role", "Time In", "Time Out",
+        "Client", "Work Type", "Description", "Hours", "Status"
+    ])
 
-import json
-from oauth2client.service_account import ServiceAccountCredentials
-
-creds_dict = st.secrets["gcp_service_account"]
-
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-
-client = gspread.authorize(creds)
-
-sheet = client.open("WorkDiary").sheet1
+df = st.session_state.data
 
 # -----------------------------
-# LOAD DATA
+# Staff List
 # -----------------------------
-data = sheet.get_all_records()
-df = pd.DataFrame(data)
-
-# -----------------------------
-# STAFF LIST
-# -----------------------------
-staff_data = {
+staff = {
     "Hitesh": "Partner",
     "Rahul": "Article",
-    "Sneha": "Employee",
-    "Amit": "Article"
+    "Sneha": "Employee"
 }
 
 # -----------------------------
-# FUNCTION: CALCULATE HOURS
+# Time Calculation
 # -----------------------------
-def calculate_hours(time_in, time_out):
+def calc_hours(t1, t2):
     try:
-        if time_out.strip() == "":
+        if t2.strip() == "":
             return 0
-        t1 = datetime.strptime(time_in, "%H:%M")
-        t2 = datetime.strptime(time_out, "%H:%M")
+        t1 = datetime.strptime(t1, "%H:%M")
+        t2 = datetime.strptime(t2, "%H:%M")
         return round((t2 - t1).seconds / 3600, 2)
     except:
         return 0
 
 # -----------------------------
-# WHO IS WORKING
+# Entry Form
 # -----------------------------
-st.subheader("🟢 Who is Working Today")
+st.subheader("➕ Add Entry")
 
-today = str(datetime.today().date())
-
-if not df.empty:
-    working_df = df[(df["Date"] == today) & (df["Status"] == "Working")]
-
-    if not working_df.empty:
-        for _, row in working_df.iterrows():
-            st.success(f"{row['Name']} ({row['Role']}) - Since {row['Time In']}")
-    else:
-        st.info("No active work entries")
-
-# -----------------------------
-# ENTRY FORM
-# -----------------------------
-st.subheader("➕ Add Work Entry")
-
-name = st.selectbox("Select Person", list(staff_data.keys()))
-role = staff_data[name]
-
-st.write(f"Role: **{role}**")
+name = st.selectbox("Select Person", list(staff.keys()))
+role = staff[name]
 
 date = st.date_input("Date", datetime.today())
-
 time_in = st.text_input("Time In (HH:MM)")
-time_out = st.text_input("Time Out (Leave blank if working)")
+time_out = st.text_input("Time Out")
 
-client_name = st.text_input("Client Name")
+client = st.text_input("Client")
+work = st.selectbox("Work Type", ["Audit", "GST", "IT", "Other"])
+desc = st.text_area("Description")
 
-work_type = st.selectbox(
-    "Work Type",
-    ["Audit", "GST", "Income Tax", "Accounting", "ROC", "Other"]
-)
+if st.button("Save"):
+    hours = calc_hours(time_in, time_out)
+    status = "Working" if time_out == "" else "Completed"
 
-description = st.text_area("Work Description")
+    new_row = pd.DataFrame([{
+        "Date": str(date),
+        "Name": name,
+        "Role": role,
+        "Time In": time_in,
+        "Time Out": time_out,
+        "Client": client,
+        "Work Type": work,
+        "Description": desc,
+        "Hours": hours,
+        "Status": status
+    }])
 
-if st.button("Save Entry"):
-    hours = calculate_hours(time_in, time_out)
-    status = "Working" if time_out.strip() == "" else "Completed"
-
-    new_row = [
-        str(date), name, role, time_in, time_out,
-        client_name, work_type, description,
-        hours, status
-    ]
-
-    sheet.append_row(new_row)
-
-    st.success(f"✅ Saved | Hours: {hours}")
-
-# -----------------------------
-# TODAY VIEW
-# -----------------------------
-st.subheader("📊 Today's Work")
-
-if not df.empty:
-    today_df = df[df["Date"] == today]
-    st.dataframe(today_df, use_container_width=True)
+    st.session_state.data = pd.concat([df, new_row], ignore_index=True)
+    st.success("Saved!")
 
 # -----------------------------
-# MONTHLY REPORT
+# Display
 # -----------------------------
-st.subheader("📅 Monthly Report")
-
-if not df.empty:
-    df["Date"] = pd.to_datetime(df["Date"], errors='coerce')
-
-    month_list = df["Date"].dt.to_period("M").dropna().astype(str).unique()
-
-    selected_month = st.selectbox("Select Month", sorted(month_list))
-
-    monthly_df = df[df["Date"].dt.to_period("M").astype(str) == selected_month]
-
-    summary = monthly_df.groupby("Name").agg({
-        "Working Hours": "sum",
-        "Work Type": "count"
-    }).reset_index()
-
-    summary.columns = ["Name", "Total Hours", "Total Entries"]
-
-    st.dataframe(summary, use_container_width=True)
+st.subheader("📊 Data (Temporary)")
+st.dataframe(st.session_state.data, use_container_width=True)
